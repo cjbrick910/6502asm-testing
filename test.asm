@@ -20,6 +20,7 @@ RESET:
 vblankwait1:                    ;wait for vblank to check PPU readiness
         BIT $2002               ;reading PPU status reg
         BPL vblankwait1
+
 clrmem:                         ;clearing memory (setting accumulator to 00, then storing it to all memory addresses)
         LDA #$00
         STA $0000, x
@@ -33,22 +34,24 @@ clrmem:                         ;clearing memory (setting accumulator to 00, the
 	STA $0300, x
 	INX
 	BNE clrmem
+
 vblankwait2:                    ;second vblank wait, PPU should be ready
         BIT $2002
         BPL vblankwait2
-LoadPalettes:
+
+LoadPalette:
         LDA $2002               ;read PPU status to reset high/low latch
         LDA #$3F               
         STA $2006               ;write high byte of $3F00 address 
         LDA #$00
         STA $2006               ;write low byte of $3F00 address
         LDX #$00                ;start at 0
-LoadPalettesLoop:
+LoadBackgroundPaletteLoop:
         LDA background_palette,x ;load data from address (palette + value in x)
         STA $2007                ;write palette data to PPU
         INX                      ;incrementing X
         CPX #$10                 ;checking if X is 10
-        BNE LoadPalettesLoop     ;will continue loop if compare isnt equal to zero
+        BNE LoadBackgroundPaletteLoop     ;will continue loop if compare isnt equal to zero
         LDX #$00
 
 LoadSpritePaletteLoop:
@@ -58,7 +61,7 @@ LoadSpritePaletteLoop:
         CPX #$10
         BNE LoadSpritePaletteLoop ;same as above, will continue loop as long as the compare isnt equal to zero
 
-        LDA #%1000000           ;setting PPU control registers. this one sets the PPU to generate an NMI at the start of the vblank interval
+        LDA #%1000000           ;setting PPU control registers. this one sets the PPU to generate an NMI at the start of the vblank interval (enables NMI)
         STA $2000
         LDA #%0001000           ;and this one sets the PPU to show sprites
         STA $2001
@@ -66,16 +69,28 @@ LoadSpritePaletteLoop:
         
 Foreverloop:
         JMP Foreverloop         ;infinite loop
+
 NMI:
+        LDA #$00
+        STA $2003               ;set high byte of the ram address 0200
+        LDA #$02
+        STA $4014               ;set low byte, start transfer
+
+DrawSprite:                     ;main sprite drawing subroutine
+        LDA #$08                ;top of the screen
+        STA $0200               ;setting sprite y position to top
+        LDA #$3A                ;top left section of mario
+        STA $0201               ;sprite tile number
+        LDA #$00                ;no attributes
+        STA $0202               ;sprite attributes
+        LDA #$08                ;left of screen
+        STA $0203               ;sprite y position
+
+        
         RTI
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
         
         .bank 1                 ;setting bank 1
-        .org $FFFA              ;first vector starts here
-        .dw NMI                 ;when the processor jumps to the NMI, it will go to the NMI label
-        .dw RESET               ;same as NMI, but jumps to RESET every reset
-        .dw 0                   
-
         .org $E000              ;start vector for palettes
 background_palette:
         .db $22,$29,$1A,$0F     ;background palette 1
@@ -88,6 +103,12 @@ sprite_palette:
         .db $22,$16,$30,$27	;sprite palette 3
         .db $22,$0F,$36,$17     ;sprite palette 4
 
+        .org $FFFA              ;first vector starts here
+        .dw NMI                 ;when the processor jumps to the NMI, it will go to the NMI label
+        .dw RESET               ;same as NMI, but jumps to RESET every reset
+        .dw 0    
+
+        
         .bank 2
         .org $0000
         .incbin "mario.chr"     ;8KB graphics file from SMB1, just for testing
